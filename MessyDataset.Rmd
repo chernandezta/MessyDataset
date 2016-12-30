@@ -1,0 +1,250 @@
+
+_Transformación de un Messy dataset a Tidy dataset_
+
+##Introducción
+En esta práctica en RMarkdown se va a proceder con el tratamiento de un dataset cuya información viene muy desordenada, sin tratar, y que requiere un procesamiento y limpieza antes de poder ser utilizado como un objeto sujeto al estudio y análisis de datos.
+
+Partiendo de la comprobación del espacio de trabajo y carga de librerías, durante la práctica se tendrá en cuenta el análisis de los valores de los campos, sus clases (tipos de variables), minúsculas y mayúsculas, barras bajas, decodificación html, etc. Todas estas cuestiones garantizarán al final la exportación de un fichero con los datos más ordenados y comprensibles, para someterse a un estudio a posteriori.
+
+##Proceso de limpieza y preparación del dataset
+
+En primer lugar, limpiamos el espacio de trabajo de información innecesaria para la práctica.
+
+```{r echo=FALSE}
+rm(list=ls())
+```
+
+Preparamos las librerías necesarias para la descarga y limpieza.
+
+
+```{r include=FALSE}
+libs <- c("downloader", "data.table", "dplyr", "xml2")
+  
+  for (i in libs)
+  {
+    print(i)
+    if(!require(i, character.only = TRUE))
+    { 
+      install.packages(i); 
+      library(i) 
+    }
+  }
+
+```
+
+
+A continuación, preparamos la ruta en la que vamos a trabajar, los directorios y descargamos el dataset.
+
+
+```{r echo=FALSE}
+
+  currDir <- getwd()
+  setwd(currDir)
+
+  dataDir <- "/data/"
+  datasetName <- "dataToClean.csv"
+
+
+  #Creamos el directorio data si no existe.
+  if (!file.exists("data"))
+  {
+                 dir.create("data")
+  }
+  
+  
+  
+  #Preparamos la descarga y almacenamosla fecha.
+  
+  ##Hay un problema en el link de descarga. Conduce al archivo donde se encuentra el dataset pero hay que acceder a la opción de descarga como .csv separado por comas, por lo que no he conseguido automatizar del todo la obtención del dataset. No consigo obtener el enlace de descarga directa para ese tipo de fichero.
+  #El enlace del dataset se almacenaría en la siguiente variable, y se emplearía la función download() en caso de ser correcto.
+  fileUrl <- "https://docs.google.com/spreadsheet/ccc?key=0ApTo6f5Yj1iJdDZ0S2xCMkd1NktzODVmT0pOc1pDREE&usp=sharing#gid=0"
+  fechaDescarga <- date()
+  
+  #Descarga del fichero, y le nombra de acuerdo al espacio de trabajo de la práctica.
+  #download(fileUrl, paste0(currDir, dataDir, datasetName), mode="wb")
+
+  
+```
+
+
+Cargamos el messy dataset en R.
+A partir de la documentación proporcionada en su página web (*https://onlinejournalismblog.com/2013/02/21/a-sample-dirty-dataset-for-trying-out-google-refine/*), sabemos que se trata de un .csv separado por ",".
+
+```{r}
+  
+messyDataset <- read.csv(paste0(currDir, dataDir, datasetName))
+summary(messyDataset)
+
+```
+
+
+Vemos que los datos que contiene el dataset están muy desordenados y llenos de caracteres ilegibles.
+Los incluimos en un data.table
+Cambiamos el nombre de las columnas a uno más comprensible.
+
+
+```{r}
+
+dataTableMessyDataset <- data.table(messyDataset)
+names(dataTableMessyDataset) <- c("year", "area", "street", "street2", "html")
+names(dataTableMessyDataset)
+
+```
+
+
+Comprobamos si los tipos de datos de las columnas son coherentes.
+
+```{r}
+  lapply(dataTableMessyDataset, class)
+```
+
+Los años aparecen como enteros y las direcciones como cadenas de texto. El tipo de datos se puede considerar correcto tal y como está.
+
+Comprobamos la existencia de valores n/a.
+
+
+```{r}
+
+valoresNa <- is.na(dataTableMessyDataset)
+
+
+filasNaDataTableMessy <- dataTableMessyDataset[rowSums(is.na(dataTableMessyDataset)) > 0, ]
+dim(filasNaDataTableMessy)
+
+
+```
+
+Obtenemos 5 columnas (las 5 del data table) con ninguna fila. No hay ningún valor n/a.
+
+Sin embargo, podemos apreciar a simple vista que en los campos "área" hay muchos que contienen cadena vacía, pues se corresponden a la última cadena no vacía que apareciera en la columna. 
+
+```{r}
+summary(dataTableMessyDataset$area)
+
+```
+
+Vamos a completar estos datos.
+
+```{r}
+
+
+dataTableMessyDataset[, area := area[1], by = cumsum(!(area == ""))]
+summary(dataTableMessyDataset$area)
+
+```
+
+En la columna "Street" vemos que hay muchos valores desconocidos. Los corregimos convirtiéndolos a espacios en blanco.
+
+Utilizamos una sustitución de cadenas. Sustituimos las variables de street por las nuevas con los cambios realizados y transformamos el tipo de la columna de 'character' a 'factor'.
+
+```{r}
+
+                            #//patrÃ³n_error,                              //sustituir_por,   //data.table
+dataTableMessyDataset$street <- gsub(pattern = '[^a-zA-Z]', perl = TRUE, replacement = "", dataTableMessyDataset$street)
+tail(dataTableMessyDataset$street)
+#lapply(dataTableMessyDataset$street, class)
+dataTableMessyDataset$street <- as.factor(dataTableMessyDataset$street)
+summary(dataTableMessyDataset$street)
+
+```
+
+Vemos que se han eliminado los caracteres extraños del dataset.
+
+Comprobamos si en la columna Street2 hay algún valor anómalo.
+```{r}
+summary(dataTableMessyDataset$street2)
+```
+
+Aunque no aparecen todos los valores, a primera vista parecen coherentes. En cualquier caso, también podemos aplicar una función que nos permita tener todos los caracteres en minúscula a la hora de ordenar aún más el dataset.
+
+```{r}
+dataTableMessyDataset$street2 <- tolower(dataTableMessyDataset$street2)
+#dataTableMessyDataset$street <- tolower(dataTableMessyDataset$street)
+  #En la columna street lo mÃ¡s apropiado sería convertir la mayúscula por un minúscula y espacio para conservar la legibilidad de los datos.
+
+dataTableMessyDataset$area <- tolower(dataTableMessyDataset$area)
+
+dataTableMessyDataset$street2 <- as.factor(dataTableMessyDataset$street2)
+dataTableMessyDataset$street <- as.factor(dataTableMessyDataset$street)
+dataTableMessyDataset$area <- as.factor(dataTableMessyDataset$area)
+
+
+
+summary(dataTableMessyDataset$street)
+summary(dataTableMessyDataset$area)
+summary(dataTableMessyDataset$street2)
+```
+
+Tras este procesado, ahora los nombres parecen más apropiados.
+En cualquier caso, los valores de la columna '$street' y '$stree2' parecen aparentemente los mismos. Se podría proceder con la eliminación de una de las dos columnas, aunque no se llevará a cabo por la posibilidad de perder información en algún punto del dataset.
+
+Vamos a comprobar si hay algún underscore antes de continuar con el análisis de la última columna.
+
+```{r}
+  
+    length(grep("_", dataTableMessyDataset$area))
+    length(grep("_", dataTableMessyDataset$street))
+    length(grep("_", dataTableMessyDataset$street2))
+
+```
+
+No se ha encontrado ninguno.
+
+La última columna presenta una codificación proveniente de un texto html, el cual hay que tratar para llegar a obtener valores comprensibles.
+
+
+```{r}
+
+summary(dataTableMessyDataset$html)
+
+temporal <- data.table(paste(dataTableMessyDataset$html, sep = ""))
+#temporal
+
+
+#Declaramos una función que se encargue de decodificar el html.
+unescape_html <- function(str){
+  xml2::xml_text(xml2::read_html(paste0("<x>", str, "</x>")))
+}
+
+
+
+
+for(i in 1:length(temporal$V1))
+{
+  temporal[i,"V1"] <- unescape_html(temporal[i,"V1"])
+}
+
+dataTableMessyDataset$html <- temporal$V1
+
+dataTableMessyDataset$html <- as.factor(dataTableMessyDataset$html)
+summary(dataTableMessyDataset$html)
+
+
+
+```
+
+Hemos conseguido clasificar el lenguaje html decodificado, aunque quedan muchos espacios con cadena vacía.
+
+
+##Exportación del dataset limpio a la máquina local
+Exportamos el dataset ya procesado al directorio de trabajo donde se está realizando la práctica.
+```{r}
+  write.csv(file="TidyDataset.csv", x=dataTableMessyDataset)
+
+```
+
+Echamos un vistazo al dataset ordenado.
+
+```{r}
+head(dataTableMessyDataset)
+```
+
+
+##Conclusiones
+La limpieza de un dataset requiere comprensión de los datos por parte del analista que a veces viene acompañada de una falta de información o relevancia sobre lo que se está tratando. Hemos podido contemplar que a pesar de ser tratadas, las columnas que indican 'street' y 'street2' contienen prácticamente la misma información. Para evitar redundancia, una solución sería prescindir de una de las dos columnas, en caso de ser 100% idénticas.
+
+No se ha encontrado ninguna interpretación coherente a la columna 'html' salvo ser información residual. Se ha tratado como el resto de los demás datos pero no aporta prácticamente nada, y es en su mayor parte una cadena vacía.
+
+A pesar de estas apreciaciones que, quizás debieran haber quedado más plasmadas en el código R que en conclusión general, se ha procedido con el tratamiento y limpieza del dataset, exportando un archivo csv más ordenado y claro que el dataset importado originalmente.
+
+
